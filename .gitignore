@@ -4,4 +4,4 @@
 .atom-build.yml
 compile-copy-plug-restart-deluge
 __pycache__
-/info
+info
