@@ -114,14 +114,73 @@ Deluge.plugins.autoremoveplusplus.util.dictToArray = function(dict) {
   return data;
 };
 
-Deluge.plugins.autoremoveplusplus.util.LinkedStore = function (){
-  console.log(arguments);
-  Ext.data.ArrayStore.apply(this, arguments);
+Deluge.plugins.autoremoveplusplus.util.LinkedStore = function (first_store, second_store, dataFieldName, linkFieldName){
+  parentStore = new Ext.data.ArrayStore(first_store);
+  parentStore.dataFieldName = dataFieldName;
+  parentStore.linkFieldName = linkFieldName;
+
+
+  childStore = new Ext.data.ArrayStore(second_store);
+
+  childStore.on('update', function(store, record, operation){
+   console.log(store)
+   console.log(record.data)
+    parentRecord = parentStore.getAt(parentStore.find(parentStore.linkFieldName, record.get(parentStore.linkFieldName)))
+    newDataFull = [];
+    for (var i = 0; i < store.getCount(); i ++){
+      nd = store.getAt(i).data;
+      delete nd[parentStore.linkFieldName];
+      newDataFull.push(Object.values(nd))
+    }
+    parentRecord.set(parentStore.dataFieldName, newDataFull);
+
+    linkedData = JSON.parse(JSON.stringify(parentRecord.get(parentStore.dataFieldName)));
+    linkedData.forEach((item, i) => {
+     item.unshift(parentRecord.get(parentStore.linkFieldName))
+    });
+    store.loadData(linkedData);
+  })
+
+
+  childStore.on('add', function(store, records, index){
+   for (record of records){
+     console.log(record)
+     parentRecord = parentStore.getAt(parentStore.find(parentStore.linkFieldName, record.get(parentStore.linkFieldName)))
+     newDataFull = [];
+     for (var i = 0; i < store.getCount(); i ++){
+       nd = store.getAt(i).data;
+       delete nd[parentStore.linkFieldName];
+       newDataFull.push(Object.values(nd))
+     }
+     parentRecord.set(parentStore.dataFieldName, newDataFull);
+    }
+   linkedData = JSON.parse(JSON.stringify(parentRecord.get(parentStore.dataFieldName)));
+   linkedData.forEach((item, i) => {
+    item.unshift(parentRecord.get(parentStore.linkFieldName))
+   });
+   store.loadData(linkedData);
+   return false
+  })
+
+  childStore.on('remove', function(store, record, index){
+   parentRecord = parentStore.getAt(parentStore.find(parentStore.linkFieldName, record.get(parentStore.linkFieldName)))
+   newDataFull = [];
+   for (var i = 0; i < store.getCount(); i ++){
+     nd = store.getAt(i).data;
+     delete nd[parentStore.linkFieldName];
+     newDataFull.push(Object.values(nd))
+    }
+   parentRecord.set(parentStore.dataFieldName, newDataFull);
+   linkedData = JSON.parse(JSON.stringify(parentRecord.get(parentStore.dataFieldName)));
+   linkedData.forEach((item, i) => {
+    item.unshift(parentRecord.get(parentStore.linkFieldName))
+   });
+   store.loadData(linkedData);
+
+  })
+
+   return {parentStore, childStore};
 };
-
-Deluge.plugins.autoremoveplusplus.util.LinkedStore.prototype = Ext.data.ArrayStore.prototype;
-
-Deluge.plugins.autoremoveplusplus.util.LinkedStore.prototype.constructor = Deluge.plugins.autoremoveplusplus.util.LinkedStore
 
 Deluge.plugins.autoremoveplusplus.ui.PreferencePage = Ext.extend(Ext.TabPanel, {
     title: Deluge.plugins.autoremoveplusplus.DISPLAY_NAME,
@@ -154,27 +213,6 @@ Deluge.plugins.autoremoveplusplus.ui.PreferencePage = Ext.extend(Ext.TabPanel, {
           margins: '0 0 0 5',
           boxLabel: _('Enable')
         });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        this.LinkedStore = new Deluge.plugins.autoremoveplusplus.util.LinkedStore();
-        console.log(this.LinkedStore);
-        console.log('test');
-
-
-
 
 
 
@@ -517,12 +555,35 @@ Deluge.plugins.autoremoveplusplus.ui.PreferencePage = Ext.extend(Ext.TabPanel, {
         });
 
 
+        lfn = 'label'
+        dfn = 'data'
+
+        firstStore = {
+         fields: [
+           lfn,
+           dfn
+         ],
+         autoDestroy: true,
+         autoSave: true
+        };
+
+        secondStore = {
+         fields: [
+           lfn,
+           {name: 'conditonName', type: 'string'},
+           {name: 'requiredTime', type: 'float'},
+         ],
+         autoSave: true,
+         autoDestroy: true
+        };
+
+        let { parentStore, childStore} = Deluge.plugins.autoremoveplusplus.util.LinkedStore(firstStore, secondStore, dfn, lfn)
 
         this.tblRulesConds = new Ext.grid.EditorGridPanel({
           xtype: 'editorgrid',
           margins: '2 0 0 5',
           flex: 1,
-          autoExpandColumn: 'conds',
+          autoExpandColumn: 'conditonName',
           autoSizeColumns: true,
 
           viewConfig: {
@@ -530,20 +591,13 @@ Deluge.plugins.autoremoveplusplus.ui.PreferencePage = Ext.extend(Ext.TabPanel, {
             deferEmtpyText: false
           },
 
-          store: new Ext.data.ArrayStore({
-            autoDestroy: true,
-            fields: [
-            {name: 'id', type: 'string'},
-            {name: 'conds', type: 'string'},
-            {name: 'requiredTime', type: 'float'}
-           ]
-          }),
+          store: childStore,
 
           colModel: new Ext.grid.ColumnModel({
             columns: [{
-              id: 'conds',
-              header: _('Conds'),
-              dataIndex: 'conds',
+              id: 'conditonName',
+              header: _('Conditon'),
+              dataIndex: 'conditonName',
               sortable: true,
               hideable: false,
               editable: true,
@@ -606,12 +660,12 @@ Deluge.plugins.autoremoveplusplus.ui.PreferencePage = Ext.extend(Ext.TabPanel, {
         });
 
         this.tblRules = this.rulesBuilderBox.add({
-          tblRulesConds: this.tblRulesConds,
+          child: this.tblRulesConds,
           tblConds: this.tblConds,
           xtype: 'editorgrid',
           margins: '2 0 0 5',
           flex: 1,
-          autoExpandColumn: 'label',
+          autoExpandColumn: lfn,
           autoSizeColumns: true,
 
           viewConfig: {
@@ -621,9 +675,9 @@ Deluge.plugins.autoremoveplusplus.ui.PreferencePage = Ext.extend(Ext.TabPanel, {
 
           colModel: new Ext.grid.ColumnModel({
             columns: [{
-              id: 'label',
+              id: lfn,
               header: _('Label'),
-              dataIndex: 'label',
+              dataIndex: lfn,
               sortable: true,
               hideable: false,
               editable: false,
@@ -638,96 +692,76 @@ Deluge.plugins.autoremoveplusplus.ui.PreferencePage = Ext.extend(Ext.TabPanel, {
             moveEditorOnEnter: false
           }),
 
-          store: new Ext.data.ArrayStore({
-            autoDestroy: true,
-            fields: [{name: 'label', type: 'string'},
-                     {name: 'conds'}]
-          }),
+          store: parentStore,
 
-
-          updateConds: function(e){
-            var selection = this.getSelectionModel().getSelected();
-            console.log(selection)
-            console.log(e.record)
-
-            new_rec = selection.get('conds');
-            console.log(new_rec)
-
-            // console.log(new_rec);
-
-            if (e.record.get('id') in new_rec){
-             // console.log(e.record);
-             new_rec[e.record.get('id')] = [e.record.get('conds'), e.record.get('requiredTime')]//[0] = e.value;
-             console.log(new_rec[e.record.get('id')], new_rec[e.record.get('id')][0], new_rec[e.record.get('id')][1])
-            } else {
-
-             // console.log(this.tblRulesConds.store.getCount());
-             for (var i = 1; i <= this.tblRulesConds.store.getCount(); i ++){
-               if (this.tblRulesConds.store.findExact('id', i, 0)  == -1){
-                e.record.set('id', i)
-               }
-             }
-             new_rec[e.record.get('id')] = [e.record.get('conds'), e.record.get('requiredTime')];
-            }
-            // console.log(e.record)
-            // console.log(new_rec);
-
-            // selection.set(e.field, new_rec);
-            // selection.commit();
-
-            // console.log(selection);
-
-          },
-
-          updateCondsRemove: function(store, record, index, me){
-           // console.log(me)
-
-           // console.log(record);
-           var selection = me.getSelectionModel().getSelections()[0];
-
-           new_rec = selection.get('conds');
-           // console.log(new_rec)
-           delete new_rec[record.get('id')]
-           // console.log((new_rec));
-
-          },
+          // updateConds: function(e){
+          //   var selection = this.getSelectionModel().getSelected();
+          //   console.log(selection)
+          //   console.log(e.record)
+          //
+          //   new_rec = selection.get('conds');
+          //   console.log(new_rec)
+          //
+          //   // console.log(new_rec);
+          //
+          //   if (e.record.get('id') in new_rec){
+          //    // console.log(e.record);
+          //    new_rec[e.record.get('id')] = [e.record.get('conds'), e.record.get('requiredTime')]//[0] = e.value;
+          //    console.log(new_rec[e.record.get('id')], new_rec[e.record.get('id')][0], new_rec[e.record.get('id')][1])
+          //   } else {
+          //
+          //    // console.log(this.tblRulesConds.store.getCount());
+          //    for (var i = 1; i <= this.tblRulesConds.store.getCount(); i ++){
+          //      if (this.tblRulesConds.store.findExact('id', i, 0)  == -1){
+          //       e.record.set('id', i)
+          //      }
+          //    }
+          //    new_rec[e.record.get('id')] = [e.record.get('conds'), e.record.get('requiredTime')];
+          //   }
+          //   // console.log(e.record)
+          //   // console.log(new_rec);
+          //
+          //   // selection.set(e.field, new_rec);
+          //   // selection.commit();
+          //
+          //   // console.log(selection);
+          //
+          // },
+          //
+          // updateCondsRemove: function(store, record, index, me){
+          //  // console.log(me)
+          //
+          //  // console.log(record);
+          //  var selection = me.getSelectionModel().getSelections()[0];
+          //
+          //  new_rec = selection.get('conds');
+          //  // console.log(new_rec)
+          //  delete new_rec[record.get('id')]
+          //  // console.log((new_rec));
+          //
+          // },
 
           listeners: {
             afteredit: function(e) {
               e.record.commit();
             },
             cellclick: function(grid, rowIndex, colIndex, e){
-              record = grid.getStore().getAt(rowIndex);
-              rules = record.get('conds');
-              console.log(rules)
-              data = Deluge.plugins.autoremoveplusplus.util.dictToArray(rules);
-              console.log(data)
-              grid.tblRulesConds.loadData(data);
+             record = grid.getStore().getAt(rowIndex);
+             linkedData = JSON.parse(JSON.stringify((record.get(grid.getStore().dataFieldName))));
+             linkedData.forEach((item, i) => {
+              item.unshift(record.get(grid.getStore().linkFieldName))
+             });
+             grid.child.loadData(linkedData);
 
-
-
-
-
-
-              store = grid.tblConds.getStore();
-              var data = [];
-              for (var i = 0; i < store.getCount(); i ++){
-                var record = store.getAt(i);
-                // console.log(record)
-                name = record.get('name');
-                data.push([name, name])
-              }
-              // console.log(data);
-              // deluge.client.autoremoveplusplus.get_rules({
-              //   success: function(rules){
-              //     data = Deluge.plugins.autoremoveplusplus.util.dictToArray(rules);
-              // console.log(data)
-              grid.tblRulesConds.getColumnModel().getColumnById('conds').editor.store.loadData(data)
-
-              //   },
-              //   scope: grid
-              // });
-            }
+             store = grid.tblConds.getStore();
+             var data = [];
+             for (var i = 0; i < store.getCount(); i ++){
+               var record = store.getAt(i);
+               name = record.get('name');
+               data.push([name, name])
+             }
+             grid.child.getColumnModel().getColumnById('conditonName').editor.store.loadData(data)
+           }
           },
 
           setEmptyText: function(text){
@@ -740,7 +774,6 @@ Deluge.plugins.autoremoveplusplus.ui.PreferencePage = Ext.extend(Ext.TabPanel, {
           },
 
           loadData: function(data) {
-            console.log(data);
             this.getStore().loadData(data);
             if (this.viewReady){
               this.getView().updateHeaders();
@@ -748,9 +781,9 @@ Deluge.plugins.autoremoveplusplus.ui.PreferencePage = Ext.extend(Ext.TabPanel, {
           }
         });
 
-        this.tblRulesConds.on('afteredit', function(e){this.tblRules.updateConds(e)}, this);
-        this.tblRulesConds.getStore().on('remove', function(a,b,c){this.tblRules.updateCondsRemove(a,b,c,this.tblRules)}, this);
-        this.tblRulesConds.tblRules = this.tblRules;
+        // this.tblRulesConds.on('afteredit', function(e){this.tblRules.updateConds(e)}, this);
+        // this.tblRulesConds.getStore().on('remove', function(a,b,c){this.tblRules.updateCondsRemove(a,b,c,this.tblRules)}, this);
+        this.tblRulesConds.parent = this.tblRules;
         this.rulesBuilderBox.add(this.tblRulesConds);
 
 
@@ -768,7 +801,7 @@ Deluge.plugins.autoremoveplusplus.ui.PreferencePage = Ext.extend(Ext.TabPanel, {
           }]
         });
 
-        this.rulesButtonsContainer.getComponent(0).setHandler(function(){this.addEntry(this.tblRulesConds)}, this);
+        this.rulesButtonsContainer.getComponent(0).setHandler(function(){this.addLinkedEntry(this.tblRulesConds)}, this);
         this.rulesButtonsContainer.getComponent(1).setHandler(function(){this.removeEntry(this.tblRulesConds)}, this);
 
 
@@ -788,12 +821,33 @@ Deluge.plugins.autoremoveplusplus.ui.PreferencePage = Ext.extend(Ext.TabPanel, {
 
     },
 
+    addLinkedEntry: function(grid){
+     var store = grid.getStore();
+     var Entry = store.recordType;
+     defaultFields = store.fields.keys;
+     newFields = {};
+     for (field of defaultFields){
+      if (field == grid.parent.getStore().linkFieldName){
+       newFields[field] = grid.parent.getSelectionModel().getSelected().get(grid.parent.getStore().linkFieldName);
+      } else {
+       newFields[field] = '';
+      }
+     }
+     var t = new Entry(newFields)
+     grid.stopEditing();
+     store.insert(0,t);
+     grid.startEditing(0,0);
+    },
+
     addEntry: function(table) {
       var store = table.getStore();
       var Entry = store.recordType;
-      var t = new Entry({
-        // name: ''
-      });
+      defaultFields = store.fields.keys;
+      newFields = {};
+      for (field of defaultFields){
+        newFields[field] = '';
+      }
+      var t = new Entry(newFields)
       table.stopEditing();
       store.insert(0, t);
       table.startEditing(0, 0);
@@ -961,12 +1015,12 @@ Deluge.plugins.autoremoveplusplus.ui.PreferencePage = Ext.extend(Ext.TabPanel, {
       rules = {};
       for (var i = 0; i < store.getCount(); i++){
         var record = store.getAt(i);
-        label = record.get('label');
-        cond = record.get('conds');
+        label = record.get(store.linkFieldName);
+        cond = record.get(store.dataFieldName);
         // console.log(cond)
         rules[label] = cond;
       }
-      // console.log(rules)
+      console.log(rules)
       return rules;
     },
 
@@ -1002,7 +1056,6 @@ Deluge.plugins.autoremoveplusplus.ui.PreferencePage = Ext.extend(Ext.TabPanel, {
   }
 });
 
-
 Deluge.plugins.autoremoveplusplus.Plugin = Ext.extend(Deluge.Plugin, {
 
     name: Deluge.plugins.autoremoveplusplus.PLUGIN_NAME,
@@ -1025,7 +1078,7 @@ Deluge.plugins.autoremoveplusplus.Plugin = Ext.extend(Deluge.Plugin, {
             }
         }]);
 
-		deluge.menus.torrent.on('show', this.updateExempt, this);
+		      deluge.menus.torrent.on('show', this.updateExempt, this);
 
         console.log('%s enabled', Deluge.plugins.autoremoveplusplus.PLUGIN_NAME);
     },

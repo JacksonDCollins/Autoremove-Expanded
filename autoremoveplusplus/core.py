@@ -99,7 +99,7 @@ class Core(CorePluginBase):
 			{"test":["availability", "hour",1]})
 
 		self.rules = deluge.configmanager.ConfigManager("autoremoveplusplus-rules.conf",
-			{"test_label": {1: ["test"],  2: ["test2"]}, "any": {1: ["test"],  2: ["test2"]}, 'none': {1: ["test"],  2: ["test2"]}})
+			{"test_label": [["test", 1], ["test2", 2]], "any": [["test", 1], ["test2", 2]], 'none': [["test", 1], ["test2", 2]]})
 
 		self.rules.save()
 		self.conds.save()
@@ -193,17 +193,19 @@ class Core(CorePluginBase):
 
 		for key in labels:
 			if key not in self.rules:
-				self.rules[key] = {}
+				self.rules[key] = []
 
 		return self.rules.config
 
 	@export
 	def save_rules(self, rules):
+
 		rules = arrayify(rules)
 
 		log.info(rules)
 		log.info(self.rules.config)
 
+		# return
 		for key in conf_keys_to_list(self.rules):
 			if not key in list(rules.keys()):
 				del self.rules[key]

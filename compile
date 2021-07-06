@@ -1,0 +1,9 @@
+#! /bin/bash
+cp -r /home/jc/plugin/Autoremove-Expanded /home/jc/plugin-comp
+cd /home/jc/plugin-comp/plugin
+python3 setup.py bdist_egg
+cp ./dist/* /home/jc/.config/deluge/plugins
+pkill deluge
+sleep 1
+deluged -L info -l /home/jc/.config/deluge/deluged.log
+deluge-web
